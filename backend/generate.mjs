@@ -120,7 +120,24 @@ async function requestModel(env, input, task, instructions, resultFields) {
       const parts = [{text:data}];
       if (media) parts.push({inlineData:{mimeType:media.mime,data:media.data}});
       const body = {systemInstruction:{parts:[{text:editorial + '\n' + instructions}]},contents:[{role:'user',parts}],generationConfig:{responseMimeType:'application/json',responseSchema:{type:'OBJECT',properties:Object.fromEntries(resultFields.map(k => [k,{type:'STRING'}])),required:resultFields}}};
-      response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body),signal:AbortSignal.timeout(150000)});
+      const base='https://generativelanguage.googleapis.com/v1beta/models';
+      const headers={'Content-Type':'application/json','x-goog-api-key':key.trim()};
+      const invoke=name=>fetch(base+'/'+encodeURIComponent(name)+':generateContent',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(150000)});
+      response=await invoke(model);
+      if(response.status===404 && !env.GEMINI_MODEL){
+        const list=await fetch(base+'?pageSize=100',{headers,signal:AbortSignal.timeout(10000)});
+        if(list.ok){
+          const available=(await list.json()).models||[];
+          const candidate=available.filter(m=>m.supportedGenerationMethods?.includes('generateContent') && /^models\/gemini-[\d.]+-flash(?:-lite)?$/.test(m.name) && m.name!=='models/'+model).sort((a,b)=>b.name.localeCompare(a.name,undefined,{numeric:true}))[0];
+          if(candidate)response=await invoke(candidate.name.slice(7));
+        }
+      }
+      if(!response.ok && response.status!==429){
+        const err=(await response.json().catch(()=>({}))).error||{};
+        const reason=err.details?.find(x=>typeof x.reason==='string')?.reason||'';
+        const msg=/API_KEY_INVALID|API_KEY_EXPIRED/.test(reason)||/api key not valid/i.test(err.message||'')?'Google отклонил ключ Gemini. Замените GEMINI_API_KEY в Render.':response.status===403?'Google запретил доступ. Проверьте разрешения ключа в AI Studio.':/location|region/i.test(err.message||'')?'Google не поддерживает регион сервера для этого проекта.':response.status===404?'Для этого проекта не найдена доступная модель Gemini Flash.':'Google отклонил запрос Gemini (HTTP '+response.status+').';
+        throw failure(msg,502);
+      }
     }
   } catch (error) {
     if (error.status) throw error;
