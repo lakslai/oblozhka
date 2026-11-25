@@ -124,11 +124,11 @@ async function requestModel(env, input, task, instructions, resultFields) {
       const headers={'Content-Type':'application/json','x-goog-api-key':key.trim()};
       const invoke=name=>fetch(base+'/'+encodeURIComponent(name)+':generateContent',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(150000)});
       response=await invoke(model);
-      if(response.status===404 && !env.GEMINI_MODEL){
+      if([404,503].includes(response.status) && !env.GEMINI_MODEL){
         const list=await fetch(base+'?pageSize=100',{headers,signal:AbortSignal.timeout(10000)});
         if(list.ok){
           const available=(await list.json()).models||[];
-          const candidate=available.filter(m=>m.supportedGenerationMethods?.includes('generateContent') && /^models\/gemini-[\d.]+-flash(?:-lite)?$/.test(m.name) && m.name!=='models/'+model).sort((a,b)=>b.name.localeCompare(a.name,undefined,{numeric:true}))[0];
+          const candidate=available.filter(m=>m.supportedGenerationMethods?.includes('generateContent') && /^models\/gemini-[\d.]+-flash(?:-lite)?$/.test(m.name) && m.name!=='models/'+model).sort((a,b)=>Number(b.name.endsWith('flash-lite'))-Number(a.name.endsWith('flash-lite')) || b.name.localeCompare(a.name,undefined,{numeric:true}))[0];
           if(candidate)response=await invoke(candidate.name.slice(7));
         }
       }
