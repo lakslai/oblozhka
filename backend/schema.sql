@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS users (
+ id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password TEXT, identity TEXT UNIQUE,
+ credits INTEGER NOT NULL DEFAULT 3 CHECK (credits >= 0),
+ prefs TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS sessions (
+ hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS session_expiry ON sessions(expires);
+CREATE TABLE IF NOT EXISTS oauth_states (key TEXT PRIMARY KEY, record TEXT NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS rate_windows (key TEXT PRIMARY KEY, hits INTEGER DEFAULT 1, expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS generations (
+ id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), request_key TEXT NOT NULL,
+ status TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE(user_id,request_key)
+);
+CREATE TABLE IF NOT EXISTS projects (
+ id TEXT PRIMARY KEY REFERENCES generations(id), user_id TEXT NOT NULL REFERENCES users(id),
+ name TEXT NOT NULL, input TEXT NOT NULL, pack TEXT NOT NULL, updated INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS project_history ON projects(user_id,updated DESC);
+
